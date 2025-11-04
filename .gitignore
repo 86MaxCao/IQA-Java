@@ -1,0 +1,48 @@
+# Java
+target/
+*.class
+*.jar
+!pom.xml
+.idea/
+*.iml
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Model files (too large for Git)
+weights/torch/*.pt
+weights/onnx/*.onnx
+weights/onnx/*.json
+
+# IDE
+.vscode/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# One-time setup scripts (user-specific, should not be committed)
+setup_git_repo.sh
