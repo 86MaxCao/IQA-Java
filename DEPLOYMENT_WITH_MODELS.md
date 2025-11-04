@@ -15,7 +15,6 @@
 ### 第一步：打包 JAR 文件（包含模型文件）
 
 ```bash
-cd java_codes
 ./package_jar.sh
 ```
 
@@ -115,7 +114,6 @@ FROM (
 如果修改了模型文件，需要重新打包：
 
 ```bash
-cd java_codes
 ./package_jar.sh
 ```
 

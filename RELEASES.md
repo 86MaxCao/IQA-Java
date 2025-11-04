@@ -16,7 +16,6 @@
 ### Step 1: Build the JAR
 
 ```bash
-cd java_codes
 ./package_jar.sh
 # Or using Maven:
 mvn clean package

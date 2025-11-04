@@ -127,7 +127,6 @@ This UDTF is designed for **Alibaba Cloud MaxCompute (ODPS)** environments and i
 ## 📁 Project Structure
 
 ```
-java_codes/
 ├── src/main/java/com/autonavi/iqa/
 │   ├── common/                     # Common interfaces and utilities
 │   │   ├── IImageQualityModel.java    # Model interface
@@ -195,7 +194,8 @@ java_codes/
 ### 1. Clone and Setup
 
 ```bash
-cd java_codes
+git clone https://github.com/86MaxCao/iqa-odps-udtf.git
+cd iqa-odps-udtf
 ```
 
 ### 2. Convert PyTorch Models to ONNX

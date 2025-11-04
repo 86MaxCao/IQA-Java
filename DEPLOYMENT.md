@@ -9,14 +9,12 @@
 如果你已经安装了 Maven：
 
 ```bash
-cd java_codes
 ./package_jar.sh
 ```
 
 或者手动执行：
 
 ```bash
-cd java_codes
 mvn clean package
 ```
 
@@ -31,7 +29,6 @@ mvn clean package
 如果没有 Maven，可以使用提供的脚本：
 
 ```bash
-cd java_codes
 ./package_jar.sh
 ```
 

@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"  # Stay in java_codes directory
+cd "$SCRIPT_DIR"
 
 # Default test URLs (if no arguments provided)
 DEFAULT_URL1="http://dzlk-cloud.oss-cn-zhangjiakou-gd.aliyuncs.com/zlkoss/socol/20250507/fc673e41c5384cdeb23b3cfd21ff2657/52196787/2025050714/1746598676496_143014e2-2b80-4124-b1c3-e57da2c43373.jpg"
@@ -23,7 +23,7 @@ else
     TEST_URLS=("$@")
 fi
 
-# Model paths (relative to java_codes directory)
+# Model paths (relative to project root)
 MODEL_DIR="weights/onnx"
 CLIP_MODEL="${MODEL_DIR}/clip_model.onnx"
 LIQE_MODEL="${MODEL_DIR}/liqe_model.onnx"
