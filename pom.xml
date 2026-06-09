@@ -9,8 +9,8 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>IQA UDTF</name>
-    <description>Image Quality Assessment UDTF for ODPS - Supports LIQE and extensible for other models</description>
+    <name>IQA-Java</name>
+    <description>Modular Java framework for No-Reference Image Quality Assessment with ONNX Runtime inference</description>
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>

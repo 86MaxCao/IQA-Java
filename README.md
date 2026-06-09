@@ -1,10 +1,10 @@
-# Image Quality Assessment UDTF for ODPS
+# IQA-Java
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-8%2B-orange.svg)](https://www.oracle.com/java/)
 [![Python](https://img.shields.io/badge/Python-3.7%2B-blue.svg)](https://www.python.org/)
 
-A modular Java framework for **Image Quality Assessment (IQA)** as User Defined Table Functions (UDTF) for **Alibaba Cloud MaxCompute (ODPS)**. Supports 7 state-of-the-art blind IQA models with ONNX Runtime inference.
+A modular Java framework for **No-Reference Image Quality Assessment (NR-IQA)** with ONNX Runtime inference. Supports 7 state-of-the-art blind IQA models. Includes an ODPS/MaxCompute UDTF adapter for large-scale batch processing.
 
 ## Supported Models
 
@@ -137,8 +137,8 @@ Each model follows the same pattern:
 ### 1. Clone
 
 ```bash
-git clone https://github.com/86MaxCao/iqa-odps-udtf.git
-cd iqa-odps-udtf
+git clone https://github.com/86Cao/IQA-Java.git
+cd IQA-Java
 ```
 
 ### 2. Convert a model to ONNX
@@ -396,9 +396,9 @@ All models are adapted from open-source implementations:
 ### Citation
 
 ```bibtex
-@software{iqa_odps_udtf,
-  title={IQA-ODPS-UDTF: Multi-Model Image Quality Assessment for MaxCompute},
-  url={https://github.com/86MaxCao/iqa-odps-udtf},
+@software{iqa_java,
+  title={IQA-Java: Multi-Model Image Quality Assessment with ONNX Runtime},
+  url={https://github.com/86Cao/IQA-Java},
   year={2024}
 }
 ```
