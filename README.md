@@ -58,16 +58,16 @@ All models are converted from [IQA-PyTorch (pyiqa)](https://github.com/chaofengc
         ▼       ▼       ▼       ▼       ▼       ▼       ▼
       LIQE    DBCNN  HyperIQA MANIQA  MUSIQ   TReS  CLIPIQA
         │       │       │       │       │       │       │
-        └───────┴───────┴───┬───┴───────┴───────┴───────┘
-                            │
-                    ┌───────▼─────────────┐
-                    │   BaseIQAModel      │
-                    │ + BaseONNXManager   │
-                    └───────┬─────────────┘
-                            │
-              ┌─────────────┼─────────────┐
-              ▼             ▼             ▼
-     ImageDownloader  ImagePreprocessor  ONNX Runtime
+        └───────┴───────┴───────┼───────┴───────┴───────┘
+                                │
+                    ┌───────────▼─────────────┐
+                    │      BaseIQAModel       │
+                    │   + BaseONNXManager     │
+                    └───────────┬─────────────┘
+                                │
+                  ┌─────────────┼─────────────┐
+                  ▼             ▼             ▼
+          ImageDownloader  ImagePreprocessor  ONNX Runtime
 ```
 
 Each model follows the same pattern:
