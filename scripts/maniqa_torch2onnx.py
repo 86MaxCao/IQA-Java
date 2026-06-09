@@ -39,65 +39,79 @@ class MANIQAWrapper(nn.Module):
         self.model = model
 
     def _extract_vit_features(self, x):
-        """Run ViT forward and return features from layers 6-9."""
+        """Run ViT forward and return raw features from blocks 6-9.
+
+        Returns features WITHOUT the final LayerNorm, matching what the
+        forward hooks capture in the original model.
+        """
         vit = self.model.vit
 
-        # Patch embedding
+        # Replicate timm VisionTransformer.forward_features up to blocks
         x = vit.patch_embed(x)
         cls_token = vit.cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_token, x), dim=1)
         x = vit.pos_drop(x + vit.pos_embed)
+        x = vit.patch_drop(x)
+        x = vit.norm_pre(x)
 
         saved = []
         for idx, blk in enumerate(vit.blocks):
             x = blk(x)
             if idx in (6, 7, 8, 9):
-                saved.append(vit.norm(x))
+                saved.append(x)  # raw block output, no norm
 
         return saved
 
     def forward(self, x):
         """
         Args:
-            x: (B, 3, 224, 224) — Inception-normalised.
+            x: (B, 3, 224, 224) -- Inception-normalised.
         Returns:
             score: (B, 1)
         """
         feats = self._extract_vit_features(x)
-
-        # Remove CLS token, keep patch tokens
         B = x.shape[0]
+        H = W = 28  # 224 / 8
+
+        # Remove CLS token, keep patch tokens (matching original extract_feature)
         feats_no_cls = [f[:, 1:, :] for f in feats]
 
-        # Concat features from layers 6-7 and 8-9 (like original code)
-        x1 = torch.cat(feats_no_cls[:2], dim=2)  # layers 6,7
-        x2 = torch.cat(feats_no_cls[2:], dim=2)  # layers 8,9
+        # Concatenate ALL 4 features (layers 6,7,8,9) on channel dim
+        # -> (B, N, embed_dim*4) where N = 784, embed_dim = 768
+        x = torch.cat(feats_no_cls, dim=2)
 
-        # TABlock + SwinTransformer stages
-        x1 = self.model.tablock1(x1)
-        x2 = self.model.tablock2(x2)
+        # Stage 1: rearrange to (B, C, N) for TABlock
+        x = x.transpose(1, 2)  # (B, embed_dim*4, N)
+        # Reshape to spatial (B, C, H*W) -- already in this shape
+        for tab in self.model.tablock1:
+            x = tab(x)
+        # Reshape to (B, C, H, W) for conv1
+        x = x.reshape(B, -1, H, W)
+        x = self.model.conv1(x)  # (B, embed_dim, H, W)
+        x = self.model.swintransformer1(x)
 
-        # Reshape to spatial: (B, H, W, C) where H=W=28 for patch8/224
-        H = W = 28  # 224 / 8
-        x1 = x1.transpose(1, 2).reshape(B, -1, H, W)
-        x2 = x2.transpose(1, 2).reshape(B, -1, H, W)
+        # Stage 2: rearrange for TABlock
+        x = x.flatten(2)  # (B, C, H*W)
+        for tab in self.model.tablock2:
+            x = tab(x)
+        x = x.reshape(B, -1, H, W)
+        x = self.model.conv2(x)  # (B, embed_dim//2, H, W)
+        x = self.model.swintransformer2(x)
 
-        x1 = self.model.swintransformer1(x1)
-        x2 = self.model.swintransformer2(x2)
+        # Rearrange to (B, N, C) for score prediction
+        x = x.flatten(2).transpose(1, 2)  # (B, N, embed_dim//2)
 
-        x1 = x1.flatten(2).transpose(1, 2)  # (B, N, C)
-        x2 = x2.flatten(2).transpose(1, 2)
+        # Score prediction (weighted sum, matching original)
+        per_patch_score = self.model.fc_score(x)    # (B, N, 1)
+        per_patch_weight = self.model.fc_weight(x)  # (B, N, 1)
 
-        # Score prediction (weighted sum)
-        q1 = self.model.fc_score(x1)   # (B, N, 1)
-        q2 = self.model.fc_score(x2)
-        w1 = self.model.fc_weight(x1)  # (B, N, 1)
-        w2 = self.model.fc_weight(x2)
+        per_patch_score = per_patch_score.reshape(B, -1)
+        per_patch_weight = per_patch_weight.reshape(B, -1)
 
-        q = (q1 * w1 + q2 * w2) / (w1 + w2 + 1e-8)
-        score = q.mean(dim=1)  # (B, 1)
-
-        return score
+        score = (per_patch_weight * per_patch_score).sum(dim=-1) / (
+            per_patch_weight.sum(dim=-1) + 1e-8
+        )
+        return score.unsqueeze(1)
 
 
 def main():
@@ -113,7 +127,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     print('=' * 60)
-    print('MANIQA PyTorch → ONNX Conversion')
+    print('MANIQA PyTorch -> ONNX Conversion')
     print('=' * 60)
 
     print(f'Loading MANIQA (pretrained={args.pretrained})...')
@@ -123,14 +137,22 @@ def main():
     wrapper = MANIQAWrapper(model)
     wrapper.eval()
 
-    dummy = torch.randn(1, 3, 224, 224)
+    # Fixed test input for reproducible comparison
+    torch.manual_seed(42)
+    test_input = torch.randn(1, 3, 224, 224)
 
+    # PyTorch inference
+    with torch.no_grad():
+        pytorch_score = wrapper(test_input)
+    print(f'PyTorch score: {pytorch_score.item():.6f}')
+
+    # ONNX export
     output_path = os.path.join(args.output_dir, 'maniqa_model.onnx')
     print(f'Exporting to {output_path}...')
 
     torch.onnx.export(
         wrapper,
-        dummy,
+        test_input,
         output_path,
         input_names=['input'],
         output_names=['score'],
@@ -140,17 +162,29 @@ def main():
         },
         opset_version=14,
         do_constant_folding=True,
+        dynamo=False,  # legacy TorchScript exporter for ModuleList compat
     )
     print(f'Exported: {output_path}')
+    onnx_size_mb = os.path.getsize(output_path) / (1024 * 1024)
+    print(f'ONNX file size: {onnx_size_mb:.1f} MB')
 
-    # Verify
+    # ONNX Runtime verification with the SAME input
     print('Verifying with ONNX Runtime...')
     import onnxruntime as ort
     sess = ort.InferenceSession(output_path)
-    test_input = np.random.randn(1, 3, 224, 224).astype(np.float32)
-    out = sess.run(None, {'input': test_input})
-    print(f'Output shape: {out[0].shape}, value: {out[0].flatten()[0]:.4f}')
-    print('Done.')
+
+    test_np = test_input.numpy()
+    onnx_out = sess.run(None, {'input': test_np})
+    onnx_score = float(onnx_out[0].flatten()[0])
+    print(f'ONNX score:    {onnx_score:.6f}')
+
+    # Comparison
+    diff = abs(pytorch_score.item() - onnx_score)
+    print(f'Abs diff:      {diff:.6f}')
+    if diff < 0.01:
+        print('PASS: PyTorch and ONNX outputs match (diff < 0.01)')
+    else:
+        print('FAIL: PyTorch and ONNX outputs differ significantly')
 
 
 if __name__ == '__main__':

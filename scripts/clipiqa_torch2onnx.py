@@ -91,7 +91,7 @@ def main():
     print('=' * 60)
 
     print('Loading CLIPIQA+ (RN50, clipiqa+)...')
-    model = CLIPIQA(pretrained='clipiqa+', backbone='RN50')
+    model = CLIPIQA(model_type='clipiqa+', backbone='RN50', pretrained=True)
     model.eval()
 
     wrapper = CLIPIQAWrapper(model)

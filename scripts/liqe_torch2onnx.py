@@ -19,9 +19,11 @@ import numpy as np
 import argparse
 from pathlib import Path
 
-# Add current directory to path to import udtf_liqe
+# Add current directory and docs directory to path to import udtf_liqe
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
+docs_dir = os.path.join(os.path.dirname(current_dir), 'docs')
+sys.path.insert(0, docs_dir)
 
 # Import from udtf_liqe
 from udtf_liqe import (

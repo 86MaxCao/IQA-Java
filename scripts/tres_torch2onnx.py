@@ -17,6 +17,7 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 IQA_ROOT = '/mnt/nas-tbt/caoziqi/code/experiment/IQA-PyTorch'
 sys.path.insert(0, IQA_ROOT)
@@ -61,18 +62,18 @@ class TReSWrapper(nn.Module):
         l3 = m.model.layer3(l2)     # (B, 1024, 14, 14)
         l4 = m.model.layer4(l3)     # (B, 2048, 7, 7)
 
-        # L2 pooling on each layer
-        l1_pool = m.avg8(m.pool1(l1))   # (B, 256, 7, 7)
-        l2_pool = m.avg4(m.pool2(l2))   # (B, 512, 7, 7)
-        l3_pool = m.avg2(m.pool3(l3))   # (B, 1024, 7, 7)
-        l4_pool = m.pool4(l4)           # (B, 2048, 7, 7)
+        # L2 normalize + L2 pooling on each layer
+        l1_pool = m.avg8(m.L2pooling_l1(F.normalize(l1, dim=1, p=2)))   # (B, 256, 7, 7)
+        l2_pool = m.avg4(m.L2pooling_l2(F.normalize(l2, dim=1, p=2)))   # (B, 512, 7, 7)
+        l3_pool = m.avg2(m.L2pooling_l3(F.normalize(l3, dim=1, p=2)))   # (B, 1024, 7, 7)
+        l4_pool = m.L2pooling_l4(F.normalize(l4, dim=1, p=2))           # (B, 2048, 7, 7)
 
         # Concatenate features: (B, 3840, 7, 7)
         layers = torch.cat([l1_pool, l2_pool, l3_pool, l4_pool], dim=1)
 
         # Positional encoding
-        pos_enc = m.pos_enc(torch.ones(1, layers.shape[1], 7, 7,
-                                       device=x.device))
+        pos_enc = m.position_embedding(torch.ones(1, layers.shape[1], 7, 7,
+                                                  device=x.device))
 
         # Transformer encoder
         trans_out = m.transformer(layers, pos_enc)  # (B, 3840, 7, 7)
@@ -142,13 +143,22 @@ def main():
     )
     print(f'Exported: {output_path}')
 
-    # Verify
+    # Verify: compare PyTorch vs ONNX on the SAME input
     print('Verifying with ONNX Runtime...')
     import onnxruntime as ort
     sess = ort.InferenceSession(output_path)
-    test_input = np.random.randn(1, 3, 224, 224).astype(np.float32)
-    out = sess.run(None, {'input': test_input})
-    print(f'Output shape: {out[0].shape}, value: {out[0].flatten()[0]:.4f}')
+    test_input = dummy.numpy()
+    onnx_out = sess.run(None, {'input': test_input})
+    onnx_score = onnx_out[0].flatten()[0]
+    pt_score = pt_out.flatten()[0].item()
+    diff = abs(pt_score - onnx_score)
+    print(f'PyTorch score:  {pt_score:.6f}')
+    print(f'ONNX score:     {onnx_score:.6f}')
+    print(f'Abs difference: {diff:.6f}')
+    if diff < 0.01:
+        print('PASS: PyTorch and ONNX outputs match.')
+    else:
+        print('FAIL: PyTorch and ONNX outputs differ too much.')
     print('Done.')
 
 
