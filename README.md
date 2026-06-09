@@ -3,6 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-8%2B-orange.svg)](https://www.oracle.com/java/)
 [![Python](https://img.shields.io/badge/Python-3.7%2B-blue.svg)](https://www.python.org/)
+[![HuggingFace](https://img.shields.io/badge/HuggingFace-ONNX%20Models-yellow.svg)](https://huggingface.co/86Cao/IQA-ONNX-Models)
 
 A modular Java framework for **No-Reference Image Quality Assessment (NR-IQA)** with ONNX Runtime inference. Supports 7 state-of-the-art blind IQA models. Includes an ODPS/MaxCompute UDTF adapter for large-scale batch processing.
 
@@ -18,7 +19,7 @@ A modular Java framework for **No-Reference Image Quality Assessment (NR-IQA)** 
 | **TReS** | [WACV 2022](https://github.com/isalirezag/TReS) | ImageNet norm | 50 | continuous |
 | **CLIPIQA** | [AAAI 2023](https://github.com/IceClear/CLIP-IQA) | CLIP norm | 1 | 0.0 - 1.0 |
 
-All models are converted from [IQA-PyTorch (pyiqa)](https://github.com/chaofengc/IQA-PyTorch) to ONNX format for Java inference.
+All models are converted from [IQA-PyTorch (pyiqa)](https://github.com/chaofengc/IQA-PyTorch) to ONNX format for Java inference. Pre-converted ONNX weights are available at [86Cao/IQA-ONNX-Models](https://huggingface.co/86Cao/IQA-ONNX-Models) on HuggingFace.
 
 ## Table of Contents
 
@@ -44,18 +45,18 @@ All models are converted from [IQA-PyTorch (pyiqa)](https://github.com/chaofengc
                     └───────────┬─────────────┘
                                 │
                     ┌───────────▼─────────────┐
-                    │     ModelFactory         │
-                    │  (creates by name)       │
+                    │     ModelFactory        │
+                    │  (creates by name)      │
                     └───────────┬─────────────┘
                                 │
                     ┌───────────▼─────────────┐
-                    │    ModelRegistry         │
-                    │  (name → class map)      │
+                    │    ModelRegistry        │
+                    │  (name → class map)     │
                     └───────────┬─────────────┘
                                 │
         ┌───────┬───────┬───────┼───────┬───────┬───────┐
         ▼       ▼       ▼       ▼       ▼       ▼       ▼
-     LIQE    DBCNN  HyperIQA MANIQA  MUSIQ   TReS  CLIPIQA
+      LIQE    DBCNN  HyperIQA MANIQA  MUSIQ   TReS  CLIPIQA
         │       │       │       │       │       │       │
         └───────┴───────┴───┬───┴───────┴───────┴───────┘
                             │
@@ -66,7 +67,7 @@ All models are converted from [IQA-PyTorch (pyiqa)](https://github.com/chaofengc
                             │
               ┌─────────────┼─────────────┐
               ▼             ▼             ▼
-        ImageDownloader  ImagePreprocessor  ONNX Runtime
+     ImageDownloader  ImagePreprocessor  ONNX Runtime
 ```
 
 Each model follows the same pattern:
@@ -184,15 +185,15 @@ Each conversion script wraps the PyTorch model to simplify the ONNX graph (eval-
 
 ### Conversion Details
 
-| Model | Script | Input Shape | Notes |
-|-------|--------|-------------|-------|
-| LIQE | `liqe_torch2onnx.py` | (1,3,224,224) | Requires separate CLIP + LIQE weights, exports text features as JSON |
-| DBCNN | `dbcnn_torch2onnx.py` | (1,3,512,384) | Wraps VGG16 + SCNN + bilinear pooling |
-| HyperIQA | `hyperiqa_torch2onnx.py` | (1,3,224,224) | Exports `forward_patch` only (no multi-crop logic) |
-| MANIQA | `maniqa_torch2onnx.py` | (1,3,224,224) | Replaces ViT hooks with explicit layer indexing |
-| MUSIQ | `musiq_torch2onnx.py` | (1,3,224,224) | Simplifies multi-scale to single-scale fixed-size |
-| TReS | `tres_torch2onnx.py` | (1,3,224,224) | Eval path only (no flipped image / consistency loss) |
-| CLIPIQA | `clipiqa_torch2onnx.py` | (1,3,224,224) | Pre-encodes text features as buffer, exports image encoder + scoring head |
+| Model | Script | Input Shape | ONNX Files | Notes |
+|-------|--------|-------------|------------|-------|
+| LIQE | `liqe_torch2onnx.py` | (1,3,224,224) | [`clip_model.onnx`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/clip_model.onnx) [`liqe_model.onnx`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/liqe_model.onnx) [`text_features.json`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/text_features.json) | Requires separate CLIP + LIQE weights, exports text features as JSON |
+| DBCNN | `dbcnn_torch2onnx.py` | (1,3,512,384) | [`dbcnn_model.onnx`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/dbcnn_model.onnx) | Wraps VGG16 + SCNN + bilinear pooling |
+| HyperIQA | `hyperiqa_torch2onnx.py` | (1,3,224,224) | [`hyperiqa_model.onnx`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/hyperiqa_model.onnx) | Exports `forward_patch` only (no multi-crop logic) |
+| MANIQA | `maniqa_torch2onnx.py` | (1,3,224,224) | [`maniqa_model.onnx`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/maniqa_model.onnx) | Replaces ViT hooks with explicit layer indexing |
+| MUSIQ | `musiq_torch2onnx.py` | (1,3,224,224) | [`musiq_model.onnx`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/musiq_model.onnx) | Simplifies multi-scale to single-scale fixed-size |
+| TReS | `tres_torch2onnx.py` | (1,3,224,224) | [`tres_model.onnx`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/tres_model.onnx) | Eval path only (no flipped image / consistency loss) |
+| CLIPIQA | `clipiqa_torch2onnx.py` | (1,3,224,224) | [`clipiqa_model.onnx`](https://huggingface.co/86Cao/IQA-ONNX-Models/blob/main/clipiqa_model.onnx) | Pre-encodes text features as buffer, exports image encoder + scoring head |
 
 ### Where to put model files
 
