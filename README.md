@@ -4,616 +4,401 @@
 [![Java](https://img.shields.io/badge/Java-8%2B-orange.svg)](https://www.oracle.com/java/)
 [![Python](https://img.shields.io/badge/Python-3.7%2B-blue.svg)](https://www.python.org/)
 
-A **modular and extensible** Java framework for **Image Quality Assessment (IQA)** as User Defined Table Functions (UDTF) for **Alibaba Cloud MaxCompute (ODPS)**. This project provides a production-ready solution for large-scale image quality assessment with support for multiple IQA models.
+A modular Java framework for **Image Quality Assessment (IQA)** as User Defined Table Functions (UDTF) for **Alibaba Cloud MaxCompute (ODPS)**. Supports 7 state-of-the-art blind IQA models with ONNX Runtime inference.
 
-**Currently Supported Models:**
-- ✅ **LIQE** (Blind Image Quality Assessment via Vision-Language Correspondence) - [CVPR 2023](https://github.com/zwx8981/LIQE)
-- 🔄 **Future Models**: DBCNN, HyperIQA, MANIQA, and more from [IQA-PyTorch](https://github.com/chaofengc/IQA-PyTorch)
+## Supported Models
 
-## 📋 Table of Contents
+| Model | Paper | Preprocessing | Crops | Score Range |
+|-------|-------|---------------|-------|-------------|
+| **LIQE** | [CVPR 2023](https://github.com/zwx8981/LIQE) | CLIP norm, 15 patches | 15 | 1.0 - 5.0 |
+| **DBCNN** | [IEEE TCSVT 2020](https://github.com/zwx8981/DBCNN-PyTorch) | ImageNet norm, full image | 1 | continuous |
+| **HyperIQA** | [CVPR 2020](https://github.com/SSL92/hyperIQA) | ImageNet norm | 25 | continuous |
+| **MANIQA** | [CVPRW 2022](https://github.com/IIGROUP/MANIQA) | Inception norm (0.5) | 20 | continuous |
+| **MUSIQ** | [ICCV 2021](https://github.com/google-research/google-research/tree/master/musiq) | [-1, 1] norm | 1 | continuous |
+| **TReS** | [WACV 2022](https://github.com/isalirezag/TReS) | ImageNet norm | 50 | continuous |
+| **CLIPIQA** | [AAAI 2023](https://github.com/IceClear/CLIP-IQA) | CLIP norm | 1 | 0.0 - 1.0 |
 
-- [Overview](#overview)
-- [Features](#features)
-- [Use Cases](#use-cases)
+All models are converted from [IQA-PyTorch (pyiqa)](https://github.com/chaofengc/IQA-PyTorch) to ONNX format for Java inference.
+
+## Table of Contents
+
+- [Architecture](#architecture)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Model Conversion](#model-conversion)
-- [Building and Packaging](#building-and-packaging)
-- [Local Testing](#local-testing)
+- [Building](#building)
+- [Testing](#testing)
 - [ODPS Deployment](#odps-deployment)
 - [Usage Examples](#usage-examples)
-- [Performance](#performance)
+- [Adding New Models](#adding-new-models)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
-## 🎯 Overview
+## Architecture
 
-This project is a **comprehensive framework** for image quality assessment in ODPS environments. Unlike single-model implementations, this framework:
-
-- **Supports Multiple IQA Models**: LIQE (current), with extensible architecture for DBCNN, HyperIQA, MANIQA, and more
-- **Modular Design**: Easy to add new models without modifying existing code
-- **ONNX Runtime Integration**: Efficient inference using ONNX Runtime for all models
-- **Factory Pattern**: Dynamic model selection at runtime
-- **Production-Ready**: Comprehensive error handling, batch processing, and resource management
-- **ODPS Native**: Seamless integration with Alibaba Cloud MaxCompute
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture design.
-
-### Why This Project Matters
-
-In the era of big data and cloud computing, **large-scale image quality assessment** has become a critical component in industrial data processing pipelines. This project addresses the unique challenges of:
-
-1. **Industrial-Scale Processing**: ODPS (MaxCompute) is Alibaba Cloud's petabyte-scale data processing platform, serving millions of users and processing billions of images daily. Traditional single-machine solutions cannot meet the scalability requirements.
-
-2. **Production-Ready Quality Control**: Automated image quality assessment at scale enables:
-   - **Content Moderation**: Filtering low-quality or inappropriate images before they reach users
-   - **Data Quality Assurance**: Ensuring data quality in machine learning pipelines
-   - **Cost Optimization**: Reducing storage and processing costs by filtering unusable images early
-   - **User Experience**: Maintaining high-quality content standards across platforms
-
-3. **Real-World Necessity**: 
-   - **E-commerce Platforms**: Quality assessment for product images (millions of images daily)
-   - **Social Media**: Content quality filtering at upload time
-   - **Cloud Storage Services**: Automated quality checks for user-uploaded images
-   - **Computer Vision Pipelines**: Pre-filtering before expensive ML model inference
-
-This Java UDTF implementation bridges the gap between cutting-edge research (LIQE model) and industrial-scale deployment (ODPS), making state-of-the-art image quality assessment accessible to production systems.
-
-**Original Paper Citation:**
-```bibtex
-@inproceedings{zhang2023liqe,
-  title={Blind Image Quality Assessment via Vision-Language Correspondence: A Multitask Learning Perspective},
-  author={Zhang, Weixia and Zhai, Guangtao and Wei, Ying and Yang, Xiaokang and Ma, Kede},
-  booktitle={IEEE/CVF Conference on Computer Vision and Pattern Recognition},
-  pages={14071--14081},
-  year={2023}
-}
+```
+                    ┌─────────────────────────┐
+                    │   ImageQualityUDTF      │
+                    │   (ODPS entry point)    │
+                    └───────────┬─────────────┘
+                                │
+                    ┌───────────▼─────────────┐
+                    │     ModelFactory         │
+                    │  (creates by name)       │
+                    └───────────┬─────────────┘
+                                │
+                    ┌───────────▼─────────────┐
+                    │    ModelRegistry         │
+                    │  (name → class map)      │
+                    └───────────┬─────────────┘
+                                │
+        ┌───────┬───────┬───────┼───────┬───────┬───────┐
+        ▼       ▼       ▼       ▼       ▼       ▼       ▼
+     LIQE    DBCNN  HyperIQA MANIQA  MUSIQ   TReS  CLIPIQA
+        │       │       │       │       │       │       │
+        └───────┴───────┴───┬───┴───────┴───────┴───────┘
+                            │
+                    ┌───────▼─────────────┐
+                    │   BaseIQAModel      │
+                    │ + BaseONNXManager   │
+                    └───────┬─────────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+        ImageDownloader  ImagePreprocessor  ONNX Runtime
 ```
 
-**Original Repository:** [https://github.com/zwx8981/LIQE](https://github.com/zwx8981/LIQE)
+Each model follows the same pattern:
+- `XxxModel.java` extends `BaseIQAModel` — handles preprocessing and multi-crop averaging
+- `XxxModelManager.java` extends `BaseONNXModelManager` — manages ONNX session lifecycle
 
-### Model Files Source
-
-The PyTorch model weights required for this project can be obtained from the following sources:
-
-1. **LIQE Model Weights** (`liqe_mix.pt` and `liqe_text_feat_mix.pt`):
-   - Download from the [original LIQE repository](https://github.com/zwx8981/LIQE)
-   - Pre-trained weights are available in the repository or via Google Drive/Baidu Pan links in the README
-   - The `liqe_mix.pt` model is trained on multiple datasets (as described in the paper)
-   - The `liqe_text_feat_mix.pt` contains pre-computed text features for efficient inference
-
-2. **CLIP Model Weights** (`ViT-B-32.pt`):
-   - This is the Vision Transformer (ViT-B/32) backbone from OpenAI's CLIP model
-   - Can be downloaded from:
-     - [OpenAI CLIP repository](https://github.com/openai/CLIP)
-     - Or automatically loaded via `torch.hub.load('openai/clip-vit-base-patch32')`
-   - The ViT-B/32 model is the standard CLIP image encoder used in LIQE
-
-**Note:** After downloading the PyTorch model files, place them in `weights/torch/` directory and use the conversion script (`scripts/liqe_torch2onnx.py`) to generate ONNX models for Java inference.
-
-## ✨ Features
-
-- 🏗️ **Extensible Architecture**: Plugin-based design for easy model integration
-- 🤖 **Multiple Model Support**: LIQE (current), with framework ready for DBCNN, HyperIQA, MANIQA, etc.
-- ⚡ **ONNX Runtime Integration**: Efficient inference using ONNX Runtime
-- 📦 **Batch Processing**: Process multiple images in a single UDTF call
-- 🌐 **URL Support**: Direct image URL processing (no local file storage needed)
-- 🛡️ **Error Handling**: Robust error handling with graceful degradation
-- 🐧 **Cross-Platform**: Supports Linux (ODPS) and macOS (local testing)
-- 💾 **Memory Efficient**: Optimized for large-scale data processing
-- 🚀 **Production Ready**: Comprehensive error handling and logging
-- 🔧 **Configurable**: JSON-based model configuration
-
-## 🎯 Use Cases
-
-This UDTF is designed for **Alibaba Cloud MaxCompute (ODPS)** environments and is ideal for:
-
-1. **Large-Scale Image Quality Assessment**
-   - Batch processing of images from OSS (Object Storage Service)
-   - Quality filtering for image datasets
-   - Image quality monitoring in production pipelines
-
-2. **Data Quality Control**
-   - Automated quality checks for uploaded images
-   - Quality-based filtering in data pipelines
-   - Image quality metrics for analytics
-
-3. **Content Moderation**
-   - Pre-filtering low-quality images before processing
-   - Quality-based image selection
-   - Batch quality assessment workflows
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 ├── src/main/java/com/autonavi/iqa/
-│   ├── common/                     # Common interfaces and utilities
-│   │   ├── IImageQualityModel.java    # Model interface
-│   │   ├── IModelManager.java         # ONNX manager interface
-│   │   ├── ModelConfig.java           # Model configuration
-│   │   └── QualityScore.java          # Score result wrapper
-│   ├── models/                     # Model implementations
-│   │   ├── base/                    # Base classes
-│   │   │   └── BaseIQAModel.java        # Abstract base class
-│   │   └── liqe/                    # LIQE model (current)
-│   │       ├── LIQEModel.java
-│   │       └── LIQEModelManager.java
-│   ├── factory/                    # Factory pattern
-│   │   ├── ModelFactory.java          # Creates model instances
-│   │   └── ModelRegistry.java         # Model registry
-│   ├── udtf/                       # UDTF implementation
-│   │   └── ImageQualityUDTF.java      # Generic UDTF
-│   └── utils/                      # Utilities
-│       ├── ImageDownloader.java
-│       └── ImagePreprocessor.java
+│   ├── common/                          # Interfaces and shared types
+│   │   ├── IImageQualityModel.java         # Model interface
+│   │   ├── IModelManager.java              # ONNX manager interface
+│   │   ├── ModelConfig.java                # Configuration POJO
+│   │   ├── ModelException.java             # Domain exception
+│   │   └── QualityScore.java               # Score result wrapper
+│   ├── models/
+│   │   ├── base/
+│   │   │   ├── BaseIQAModel.java           # Abstract base for all models
+│   │   │   └── BaseONNXModelManager.java   # ONNX session management
+│   │   ├── liqe/                           # LIQE implementation
+│   │   ├── dbcnn/                          # DBCNN implementation
+│   │   ├── hyperiqa/                       # HyperIQA implementation
+│   │   ├── maniqa/                         # MANIQA implementation
+│   │   ├── musiq/                          # MUSIQ implementation
+│   │   ├── tres/                           # TReS implementation
+│   │   └── clipiqa/                        # CLIPIQA implementation
+│   ├── factory/
+│   │   ├── ModelFactory.java               # Creates model by name
+│   │   └── ModelRegistry.java              # Static model registry
+│   ├── udtf/
+│   │   └── ImageQualityUDTF.java           # ODPS UDTF entry point
+│   └── utils/
+│       ├── ImageDownloader.java            # HTTP image fetcher
+│       ├── ImagePreprocessor.java          # Resize, crop, normalize
+│       └── TextFeatureLoader.java          # JSON text features (LIQE)
+├── src/test/java/com/autonavi/iqa/        # Unit tests (JUnit 5)
 ├── scripts/
-│   ├── liqe_torch2onnx.py         # Convert PyTorch models to ONNX
-│   ├── udtf_liqe.py               # Python UDTF implementation (reference)
-│   └── liqe.py                    # Original LIQE model implementation
-├── weights/
-│   ├── torch/                     # PyTorch model weights
-│   │   ├── liqe_mix.pt
-│   │   ├── ViT-B-32.pt
-│   │   └── liqe_text_feat_mix.pt
-│   └── onnx/                      # ONNX model files (generated)
-│       ├── clip_model.onnx
-│       ├── liqe_model.onnx
-│       └── text_features.json
-├── pom.xml                        # Maven configuration
-├── test_with_url.sh               # Test script with URL
-├── test_udtf.sh                  # Test UDTF implementation
-├── compile_and_test.sh            # Compile and test script
-├── package_jar.sh                 # Package JAR script
-└── README.md                      # This file
+│   ├── liqe_torch2onnx.py                 # LIQE conversion
+│   ├── dbcnn_torch2onnx.py                # DBCNN conversion
+│   ├── hyperiqa_torch2onnx.py             # HyperIQA conversion
+│   ├── maniqa_torch2onnx.py               # MANIQA conversion
+│   ├── musiq_torch2onnx.py                # MUSIQ conversion
+│   ├── tres_torch2onnx.py                 # TReS conversion
+│   └── clipiqa_torch2onnx.py              # CLIPIQA conversion
+├── pom.xml
+└── README.md
 ```
 
-## 🔧 Prerequisites
+## Prerequisites
 
-### For Model Conversion (Python)
+### Python (for model conversion)
 - Python 3.7+
 - PyTorch 1.8+
-- torchvision
-- onnx
-- onnxruntime
-- Pillow
-- requests
+- [IQA-PyTorch](https://github.com/chaofengc/IQA-PyTorch) cloned locally
+- onnx, onnxruntime
 
-### For Java Development
-- Java 8+ (JDK 8 for ODPS compatibility)
-- Maven 3.6+ (optional, for automated building)
-- Access to ODPS SDK (for UDTF deployment)
+### Java (for development and deployment)
+- JDK 8+ (Java 8 for ODPS compatibility)
+- Maven 3.6+
 
-### For ODPS Deployment
-- Alibaba Cloud MaxCompute (ODPS) account
-- ODPS CLI tools configured
-- Access to upload resources and create UDTF functions
+### ODPS (for deployment)
+- Alibaba Cloud MaxCompute account
+- ODPS CLI configured
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Clone and Setup
+### 1. Clone
 
 ```bash
 git clone https://github.com/86MaxCao/iqa-odps-udtf.git
 cd iqa-odps-udtf
 ```
 
-### 2. Convert PyTorch Models to ONNX
+### 2. Convert a model to ONNX
+
+Each model has a dedicated conversion script. Example for LIQE:
 
 ```bash
-# Install Python dependencies
-pip install torch torchvision onnx onnxruntime pillow requests
-
-# Convert models
 python scripts/liqe_torch2onnx.py \
-    --liqe_model_path weights/torch/liqe_mix.pt \
-    --clip_model_path weights/torch/ViT-B-32.pt \
-    --text_feat_path weights/torch/liqe_text_feat_mix.pt \
+    --liqe_model_path /path/to/liqe_mix.pt \
+    --clip_model_path /path/to/ViT-B-32.pt \
+    --text_feat_path /path/to/liqe_text_feat_mix.pt \
     --output_dir weights/onnx
 ```
 
-This will generate:
-- `weights/onnx/clip_model.onnx`
-- `weights/onnx/liqe_model.onnx`
-- `weights/onnx/text_features.json`
-
-### 3. Compile Java Code
+For other models, conversion scripts load pretrained weights via `pyiqa`:
 
 ```bash
-# Using Maven (recommended)
-mvn clean compile
+# Example: DBCNN
+python scripts/dbcnn_torch2onnx.py
 
-# OR using manual script
-./compile_and_test.sh
+# Example: HyperIQA
+python scripts/hyperiqa_torch2onnx.py
 ```
 
-### 4. Test Locally
+All scripts save ONNX files and verify them with onnxruntime before exiting.
 
-```bash
-# Test with default URLs
-./test_with_url.sh
-
-# Test with custom URLs
-./test_with_url.sh "http://example.com/image1.jpg" "http://example.com/image2.jpg"
-
-# Test UDTF implementation
-./test_udtf.sh
-```
-
-## 📦 Model Conversion
-
-### Step-by-Step Conversion
-
-1. **Download PyTorch Models**
-   
-   First, download the required model files:
-   
-   - **LIQE Models** (`liqe_mix.pt` and `liqe_text_feat_mix.pt`):
-     - Download from: [https://github.com/zwx8981/LIQE](https://github.com/zwx8981/LIQE)
-     - Google Drive: [Link in original repository](https://github.com/zwx8981/LIQE)
-     - Baidu Pan: [Link in original repository](https://github.com/zwx8981/LIQE)
-   
-   - **CLIP Model** (`ViT-B-32.pt`):
-     - Download from: [OpenAI CLIP](https://github.com/openai/CLIP)
-     - Or use: `torch.hub.load('openai/clip-vit-base-patch32')`
-     - This is the standard ViT-B/32 CLIP model
-
-2. **Place Models in Directory**
-   
-   Place all downloaded PyTorch model files in `weights/torch/`:
-   ```
-   weights/torch/
-   ├── liqe_mix.pt              # LIQE model weights (from LIQE repo)
-   ├── ViT-B-32.pt              # CLIP model weights (from OpenAI CLIP)
-   └── liqe_text_feat_mix.pt    # Text features (from LIQE repo)
-   ```
-
-3. **Run Conversion Script**
-   ```bash
-   python scripts/liqe_torch2onnx.py \
-       --liqe_model_path weights/torch/liqe_mix.pt \
-       --clip_model_path weights/torch/ViT-B-32.pt \
-       --text_feat_path weights/torch/liqe_text_feat_mix.pt \
-       --output_dir weights/onnx \
-       --device cpu  # or 'cuda' for GPU
-   ```
-
-4. **Verify Output**
-   - Check that all three files are generated in `weights/onnx/`:
-     - `clip_model.onnx`
-     - `liqe_model.onnx`
-     - `text_features.json`
-   - Test the ONNX models using `SimpleONNXTest.java`
-
-## 🏗️ Building and Packaging
-
-### Using Maven (Recommended)
+### 3. Build
 
 ```bash
 mvn clean package
 ```
 
-This creates:
-- `target/liqe-udtf-1.0.0.jar` - Main JAR
-- `target/liqe-udtf-1.0.0-jar-with-dependencies.jar` - Fat JAR (for ODPS)
+### 4. Deploy to ODPS
 
-### Manual Packaging
+See [ODPS Deployment](#odps-deployment) below.
 
-```bash
-./package_jar.sh
+## Model Conversion
+
+Each conversion script wraps the PyTorch model to simplify the ONNX graph (eval-mode only, no data augmentation) and exports with:
+- `opset_version=14`
+- `dynamic_axes` for batch dimension
+- `do_constant_folding=True`
+
+### Conversion Details
+
+| Model | Script | Input Shape | Notes |
+|-------|--------|-------------|-------|
+| LIQE | `liqe_torch2onnx.py` | (1,3,224,224) | Requires separate CLIP + LIQE weights, exports text features as JSON |
+| DBCNN | `dbcnn_torch2onnx.py` | (1,3,512,384) | Wraps VGG16 + SCNN + bilinear pooling |
+| HyperIQA | `hyperiqa_torch2onnx.py` | (1,3,224,224) | Exports `forward_patch` only (no multi-crop logic) |
+| MANIQA | `maniqa_torch2onnx.py` | (1,3,224,224) | Replaces ViT hooks with explicit layer indexing |
+| MUSIQ | `musiq_torch2onnx.py` | (1,3,224,224) | Simplifies multi-scale to single-scale fixed-size |
+| TReS | `tres_torch2onnx.py` | (1,3,224,224) | Eval path only (no flipped image / consistency loss) |
+| CLIPIQA | `clipiqa_torch2onnx.py` | (1,3,224,224) | Pre-encodes text features as buffer, exports image encoder + scoring head |
+
+### Where to put model files
+
+The conversion scripts save ONNX files to the output directory you specify. For ODPS deployment, upload them as resources. For local testing, configure paths via `ModelConfig`:
+
+```java
+ModelConfig config = new ModelConfig("liqe");
+config.setModelPath("clip_onnx", "/path/to/clip_model.onnx");
+config.setModelPath("liqe_onnx", "/path/to/liqe_model.onnx");
+config.setModelPath("text_features", "/path/to/text_features.json");
 ```
 
-The fat JAR includes:
-- All Java classes
-- All dependencies (ONNX Runtime, Jackson, JavaCV, etc.)
-- Linux native libraries (OpenCV, OpenBLAS) for ODPS
-
-**Note:** The JAR is compiled for Java 8 compatibility to work with ODPS runtime.
-
-### Pre-built JAR Files (Recommended)
-
-**✅ Best Practice**: Pre-built JAR files are distributed via [GitHub Releases](https://github.com/86MaxCao/iqa-odps-udtf/releases) rather than committed to the repository.
-
-**Why GitHub Releases?**
-- ✅ Keeps repository size small (JAR is ~200MB)
-- ✅ Standard industry practice
-- ✅ Version control and download tracking
-- ✅ Easy for users to get started quickly
-
-**Download Latest Release:**
-```bash
-# Download latest release JAR
-wget https://github.com/86MaxCao/iqa-odps-udtf/releases/latest/download/iqa-udtf-1.0.0-jar-with-dependencies.jar
-
-# Or download specific version
-wget https://github.com/86MaxCao/iqa-odps-udtf/releases/download/v1.0.0/iqa-udtf-1.0.0-jar-with-dependencies.jar
-```
-
-**What's Included:**
-- All Java classes
-- All dependencies (ONNX Runtime, Jackson, JavaCV, etc.)
-- Linux native libraries (OpenCV, OpenBLAS) for ODPS
-- Ready for immediate ODPS deployment
-
-**Note:** If you prefer to build from source, follow the instructions above. See [RELEASES.md](RELEASES.md) for details on creating releases.
-
-## 🧪 Local Testing
-
-### Test with Image URLs
+## Building
 
 ```bash
-# Test with default test URLs
-./test_with_url.sh
+# Compile and run tests
+mvn clean verify
 
-# Test with custom URLs
-./test_with_url.sh \
-    "http://example.com/image1.jpg" \
-    "http://example.com/image2.jpg"
+# Package fat JAR for ODPS (includes all dependencies)
+mvn clean package
 ```
 
-### Test UDTF Implementation
+Output:
+- `target/iqa-udtf-1.0.0.jar` — main JAR
+- `target/iqa-udtf-1.0.0-jar-with-dependencies.jar` — fat JAR for ODPS deployment
+
+The fat JAR includes ONNX Runtime, Jackson, JavaCV (with Linux native libraries), and Apache HttpClient.
+
+## Testing
+
+Unit tests cover core components without requiring ONNX model files or native libraries:
 
 ```bash
-# Test UDTF process method
-./test_udtf.sh
-
-# Test with custom URLs
-./test_udtf.sh "http://example.com/image1.jpg" "http://example.com/image2.jpg"
+mvn test
 ```
 
-### Python Script Testing
+Test classes:
+- `QualityScoreTest` — score wrapper, error handling, constants
+- `ModelConfigTest` — configuration POJO, typed parameter retrieval
+- `ModelRegistryTest` — model registration, case-insensitive lookup, validation
+- `ModelFactoryTest` — factory creation, error messages
+- `ImagePreprocessorTest` — normalization, patch selection, ONNX input formatting
 
-```bash
-# Test Python UDTF implementation
-python scripts/udtf_liqe.py \
-    --model_path weights/torch/liqe_mix.pt \
-    --clip_model_path weights/torch/ViT-B-32.pt \
-    --image_path "http://example.com/image.jpg"
-```
+## ODPS Deployment
 
-## ☁️ ODPS Deployment
-
-### Step 1: Upload Resources
+### 1. Upload resources
 
 ```sql
--- Upload JAR file
-ADD JAR target/liqe-udtf-1.0.0-jar-with-dependencies.jar;
+-- Upload fat JAR
+ADD JAR iqa-udtf-1.0.0-jar-with-dependencies.jar;
 
--- Upload ONNX model files
-ADD FILE weights/onnx/clip_model.onnx AS clip_model.onnx;
-ADD FILE weights/onnx/liqe_model.onnx AS liqe_model.onnx;
-ADD FILE weights/onnx/text_features.json AS text_features.json;
+-- Upload model files (example for LIQE)
+ADD FILE clip_model.onnx;
+ADD FILE liqe_model.onnx;
+ADD FILE text_features.json;
 ```
 
-### Step 2: Create UDTF Function
+### 2. Create UDTF
 
-**Option 1: Generic UDTF (Recommended - supports multiple models)**
 ```sql
-CREATE FUNCTION udtf_iqa AS 'com.autonavi.iqa.udtf.ImageQualityUDTF'
-USING 'iqa-udtf-1.0.0-jar-with-dependencies.jar',
-      'models/liqe/config.json',
-      'models/liqe/clip_model.onnx',
-      'models/liqe/liqe_model.onnx',
-      'models/liqe/text_features.json';
+CREATE FUNCTION image_quality AS 'com.autonavi.iqa.udtf.ImageQualityUDTF'
+USING 'iqa-udtf-1.0.0-jar-with-dependencies.jar,clip_model.onnx,liqe_model.onnx,text_features.json';
 ```
 
-**Option 2: LIQE-specific UDTF (Backward compatible)**
-```sql
-CREATE FUNCTION udtf_liqe AS 'com.autonavi.iqa.models.liqe.LIQEUDTF'
-USING 'iqa-udtf-1.0.0-jar-with-dependencies.jar',
-      'models/liqe/clip_model.onnx',
-      'models/liqe/liqe_model.onnx',
-      'models/liqe/text_features.json';
-```
-
-### Step 3: Use in SQL Queries
+### 3. Query
 
 ```sql
--- Example: Process image URLs from a table (using generic UDTF)
-SELECT 
-    image_url,
-    quality_score
+SELECT T.url, T.score
 FROM (
-    SELECT 
-        COLLECT_LIST(oss_url) AS urls
-    FROM your_image_table
-    GROUP BY some_group_key
-) t
-LATERAL VIEW udtf_iqa(urls) AS image_url, quality_score;
+    SELECT COLLECT_LIST(image_url) AS urls
+    FROM image_table
+    WHERE dt = '20260601'
+) t1
+LATERAL VIEW image_quality('liqe', urls) T AS url, score;
 ```
 
-**Note:** To use a specific model, set the model name in the configuration file. The framework will automatically load the appropriate model.
+The first argument selects the model: `liqe`, `dbcnn`, `hyperiqa`, `maniqa`, `musiq`, `tres`, or `clipiqa`.
 
-### Step 4: Verify Deployment
+## Usage Examples
 
-```sql
--- Test with sample URLs
-SELECT 
-    image_url,
-    quality_score
-FROM (
-    SELECT ARRAY(
-        'http://example.com/image1.jpg',
-        'http://example.com/image2.jpg'
-    ) AS urls
-) t
-LATERAL VIEW udtf_liqe(urls) AS image_url, quality_score;
-```
-
-## 💡 Usage Examples
-
-### Example 1: Batch Quality Assessment
+### Batch quality assessment with filtering
 
 ```sql
--- Process multiple images from a table
-SELECT 
-    batch_id,
-    image_url,
-    quality_score,
-    CASE 
-        WHEN quality_score < 2.0 THEN 'low'
-        WHEN quality_score < 3.5 THEN 'medium'
+SELECT url, score,
+    CASE
+        WHEN score < 2.0 THEN 'low'
+        WHEN score < 3.5 THEN 'medium'
         ELSE 'high'
     END AS quality_level
 FROM (
-    SELECT 
-        batch_id,
-        COLLECT_LIST(oss_url) AS urls
+    SELECT COLLECT_LIST(oss_url) AS urls
     FROM image_uploads
-    WHERE date = '2024-01-01'
+    WHERE dt = '20260601'
     GROUP BY batch_id
 ) t
-LATERAL VIEW udtf_liqe(urls) AS image_url, quality_score
-WHERE quality_score >= 2.0;  -- Filter low-quality images
+LATERAL VIEW image_quality('liqe', urls) T AS url, score
+WHERE score >= 0;  -- exclude errors (score = -1.0)
 ```
 
-### Example 2: Quality Filtering
+### Compare models
 
 ```sql
--- Filter images by quality threshold
-WITH quality_assessed AS (
-    SELECT 
-        image_id,
-        image_url,
-        quality_score
-    FROM (
-        SELECT 
-            image_id,
-            COLLECT_LIST(oss_url) AS urls
-        FROM image_table
-        GROUP BY image_id
-    ) t
-    LATERAL VIEW udtf_liqe(urls) AS image_url, quality_score
-)
-SELECT 
-    image_id,
-    image_url,
-    quality_score
-FROM quality_assessed
-WHERE quality_score >= 3.0;  -- Only keep good quality images
-```
-
-### Example 3: Quality Statistics
-
-```sql
--- Calculate quality statistics per batch
-SELECT 
-    batch_id,
-    COUNT(*) AS total_images,
-    AVG(quality_score) AS avg_quality,
-    MIN(quality_score) AS min_quality,
-    MAX(quality_score) AS max_quality,
-    SUM(CASE WHEN quality_score >= 3.0 THEN 1 ELSE 0 END) AS high_quality_count
+-- Run two models on the same images
+SELECT a.url, a.score AS liqe_score, b.score AS dbcnn_score
 FROM (
-    SELECT 
-        batch_id,
-        COLLECT_LIST(oss_url) AS urls
-    FROM image_table
-    GROUP BY batch_id
+    SELECT COLLECT_LIST(image_url) AS urls FROM sample_images
 ) t
-LATERAL VIEW udtf_liqe(urls) AS image_url, quality_score
-GROUP BY batch_id;
+LATERAL VIEW image_quality('liqe', urls) a AS url, score
+JOIN (
+    SELECT url, score FROM (
+        SELECT COLLECT_LIST(image_url) AS urls FROM sample_images
+    ) t2
+    LATERAL VIEW image_quality('dbcnn', urls) b AS url, score
+) b ON a.url = b.url;
 ```
 
-## ⚡ Performance
+### Quality statistics
 
-- **Batch Processing**: Processes multiple images in a single UDTF call
-- **Memory Efficient**: Processes images in batches of 8 (configurable)
-- **Error Handling**: Failed images return error score (-1.0) without blocking
-- **Native Libraries**: Optimized OpenCV/OpenBLAS for image processing
+```sql
+SELECT
+    COUNT(*) AS total,
+    AVG(score) AS avg_score,
+    MIN(score) AS min_score,
+    MAX(score) AS max_score,
+    SUM(CASE WHEN score >= 3.0 THEN 1 ELSE 0 END) AS high_quality
+FROM (
+    SELECT COLLECT_LIST(image_url) AS urls
+    FROM image_table
+) t
+LATERAL VIEW image_quality('liqe', urls) T AS url, score
+WHERE score >= 0;
+```
 
-**Performance Tips:**
-- Process images in batches for better throughput
-- Use appropriate batch sizes based on available memory
-- Monitor ODPS resource usage and adjust accordingly
+## Adding New Models
 
-## 🔍 Troubleshooting
+1. **Create model classes** in `src/main/java/com/autonavi/iqa/models/yourmodel/`:
+   - `YourModel.java` extending `BaseIQAModel`
+   - `YourModelManager.java` extending `BaseONNXModelManager`
 
-### Common Issues
+2. **Register** in `ModelRegistry.java`:
+   ```java
+   registerModel("yourmodel", YourModel.class);
+   ```
 
-#### 1. `UnsatisfiedLinkError: no jniopenblas_nolapack`
+3. **Create conversion script** in `scripts/yourmodel_torch2onnx.py`
 
-**Solution:** Ensure Linux native libraries are included in the JAR:
-- Download `opencv-4.7.0-1.5.9-linux-x86_64.jar`
-- Download `openblas-0.3.23-1.5.9-linux-x86_64.jar`
-- Place them in `target/lib/` before packaging
+4. **Build and test**:
+   ```bash
+   mvn clean verify
+   ```
 
-#### 2. Model Files Not Found
+The factory and UDTF will automatically pick up the new model by name.
 
-**Solution:** Verify model files are uploaded to ODPS:
+## Troubleshooting
+
+### `UnsatisfiedLinkError: no jniopenblas_nolapack`
+
+Ensure the fat JAR includes Linux native libraries. The `javacv-platform` dependency bundles them automatically via Maven.
+
+### Model files not found in ODPS
+
+Verify resources are uploaded:
 ```sql
 LIST RESOURCES;
 ```
 
-#### 3. Java Version Mismatch
+### Java version mismatch
 
-**Solution:** Ensure JAR is compiled for Java 8:
+The project targets Java 8. Verify in `pom.xml`:
 ```xml
-<!-- In pom.xml -->
 <maven.compiler.source>8</maven.compiler.source>
 <maven.compiler.target>8</maven.compiler.target>
 ```
 
-#### 4. Image Download Failures
+### Image download failures
 
-**Solution:** The UDTF handles download failures gracefully:
-- Returns error score (-1.0) for failed downloads
-- Logs warnings for debugging
-- Continues processing remaining images
-
-### Debug Mode
-
-Enable debug logging:
+The UDTF returns `-1.0` for failed downloads and continues processing remaining images. Check ODPS logs for details:
 ```sql
 SET odps.udf.log.level=DEBUG;
 ```
 
-## 📝 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License. See [LICENSE](LICENSE).
 
 ### Model Licenses
 
-- **LIQE Model**: The original LIQE model is licensed under MIT License (see [original repository](https://github.com/zwx8981/LIQE))
-- **CLIP Model**: OpenAI CLIP is licensed under MIT License (see [OpenAI CLIP](https://github.com/openai/CLIP))
+All models are adapted from open-source implementations:
+- [LIQE](https://github.com/zwx8981/LIQE) — MIT
+- [IQA-PyTorch](https://github.com/chaofengc/IQA-PyTorch) — MIT (DBCNN, HyperIQA, MANIQA, MUSIQ, TReS, CLIPIQA)
+- [OpenAI CLIP](https://github.com/openai/CLIP) — MIT
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- **Original LIQE Implementation**: [https://github.com/zwx8981/LIQE](https://github.com/zwx8981/LIQE) - The research paper and original PyTorch implementation
-- **OpenAI CLIP**: [https://github.com/openai/CLIP](https://github.com/openai/CLIP) - Vision-language model backbone
-- **ONNX Runtime**: [https://github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) - Efficient inference engine
-- **JavaCV**: [https://github.com/bytedeco/javacv](https://github.com/bytedeco/javacv) - Java bindings for OpenCV
-- **ODPS SDK**: Alibaba Cloud MaxCompute - Big data processing platform
+- [IQA-PyTorch (pyiqa)](https://github.com/chaofengc/IQA-PyTorch) — Unified IQA toolkit
+- [LIQE](https://github.com/zwx8981/LIQE) — Vision-language IQA
+- [ONNX Runtime](https://github.com/microsoft/onnxruntime) — Inference engine
+- [JavaCV](https://github.com/bytedeco/javacv) — Java OpenCV bindings
+- [Alibaba Cloud MaxCompute](https://www.alibabacloud.com/product/maxcompute) — ODPS platform
 
 ### Citation
 
-If you use this project in your research or work, please cite:
-
-1. **Original LIQE Paper:**
 ```bibtex
-@inproceedings{zhang2023liqe,
-  title={Blind Image Quality Assessment via Vision-Language Correspondence: A Multitask Learning Perspective},
-  author={Zhang, Weixia and Zhai, Guangtao and Wei, Ying and Yang, Xiaokang and Ma, Kede},
-  booktitle={IEEE/CVF Conference on Computer Vision and Pattern Recognition},
-  pages={14071--14081},
-  year={2023}
+@software{iqa_odps_udtf,
+  title={IQA-ODPS-UDTF: Multi-Model Image Quality Assessment for MaxCompute},
+  url={https://github.com/86MaxCao/iqa-odps-udtf},
+  year={2024}
 }
 ```
-
-2. **This Implementation:**
-```bibtex
-@software{liqe_odps_udtf,
-  title={LIQE ODPS UDTF: Java Implementation for Large-Scale Image Quality Assessment},
-  author={Your Name},
-  year={2024},
-          url={https://github.com/86MaxCao/iqa-odps-udtf}
-}
-```
-
-## 📧 Contact
-
-For issues and questions, please open an issue on GitHub.
-
----
-
-**Note:** This UDTF is optimized for ODPS (MaxCompute) environments. For other environments, you may need to adjust native library dependencies and deployment procedures.

@@ -20,12 +20,13 @@ public class ModelRegistry {
     private static final Map<String, Class<? extends IImageQualityModel>> models = new HashMap<>();
     
     static {
-        // Register built-in models
         registerModel("liqe", com.autonavi.iqa.models.liqe.LIQEModel.class);
-        
-        // Future models can be registered here:
-        // registerModel("dbcnn", com.autonavi.iqa.models.dbcnn.DBCNNModel.class);
-        // registerModel("hyperiqa", com.autonavi.iqa.models.hyperiqa.HyperIQAModel.class);
+        registerModel("dbcnn", com.autonavi.iqa.models.dbcnn.DBCNNModel.class);
+        registerModel("hyperiqa", com.autonavi.iqa.models.hyperiqa.HyperIQAModel.class);
+        registerModel("maniqa", com.autonavi.iqa.models.maniqa.MANIQAModel.class);
+        registerModel("musiq", com.autonavi.iqa.models.musiq.MUSIQModel.class);
+        registerModel("tres", com.autonavi.iqa.models.tres.TReSModel.class);
+        registerModel("clipiqa", com.autonavi.iqa.models.clipiqa.CLIPIQAModel.class);
     }
     
     /**

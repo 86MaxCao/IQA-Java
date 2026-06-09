@@ -7,6 +7,9 @@ import org.bytedeco.opencv.opencv_core.Size;
 import org.bytedeco.opencv.opencv_core.Scalar;
 import org.bytedeco.opencv.opencv_core.Rect;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,15 +17,18 @@ import java.util.List;
 import static org.bytedeco.opencv.global.opencv_core.*;
 import static org.bytedeco.opencv.global.opencv_imgproc.*;
 
-/**
- * Image preprocessing utilities for IQA models
- * Currently implements LIQE-specific preprocessing, but can be extended for other models
- */
 public class ImagePreprocessor {
-    
-    // LIQE-specific constants (can be made configurable for other models)
+
+    private static final Logger logger = LoggerFactory.getLogger(ImagePreprocessor.class);
+
     public static final float[] OPENAI_CLIP_MEAN = {0.48145466f, 0.4578275f, 0.40821073f};
     public static final float[] OPENAI_CLIP_STD = {0.26862954f, 0.26130258f, 0.27577711f};
+
+    public static final float[] IMAGENET_MEAN = {0.485f, 0.456f, 0.406f};
+    public static final float[] IMAGENET_STD = {0.229f, 0.224f, 0.225f};
+
+    public static final float[] INCEPTION_MEAN = {0.5f, 0.5f, 0.5f};
+    public static final float[] INCEPTION_STD = {0.5f, 0.5f, 0.5f};
     
     public static final int TARGET_WIDTH = 640;
     public static final int TARGET_HEIGHT = 360;
@@ -200,13 +206,129 @@ public class ImagePreprocessor {
         return result;
     }
     
-    /**
-     * Convert Mat to BufferedImage for display/debugging
-     */
     public static BufferedImage matToBufferedImage(Mat mat) {
         OpenCVFrameConverter.ToMat converterToMat = new OpenCVFrameConverter.ToMat();
         Java2DFrameConverter converterToJava2D = new Java2DFrameConverter();
         return converterToJava2D.convert(converterToMat.convert(mat));
+    }
+
+    /**
+     * Extract uniform crops from an image for multi-crop inference.
+     * Produces a grid of overlapping crops that cover the image as evenly as possible.
+     *
+     * @param image    source image (BGR, CV_8UC3)
+     * @param cropSize crop width and height in pixels
+     * @param numCrops desired number of crops
+     * @return list of crop regions as float[1][3][cropSize][cropSize] in RGB [0,1]
+     */
+    public static List<float[][][][]> uniformCrop(Mat image, int cropSize, int numCrops) {
+        int h = image.rows();
+        int w = image.cols();
+
+        Mat src = image;
+        if (h < cropSize || w < cropSize) {
+            int newH = Math.max(h, cropSize);
+            int newW = Math.max(w, cropSize);
+            src = new Mat();
+            resize(image, src, new Size(newW, newH));
+            h = newH;
+            w = newW;
+        }
+
+        int gridSide = (int) Math.ceil(Math.sqrt(numCrops));
+        int actualCrops = gridSide * gridSide;
+
+        float stepH = (h - cropSize) / (float) Math.max(gridSide - 1, 1);
+        float stepW = (w - cropSize) / (float) Math.max(gridSide - 1, 1);
+
+        List<float[][][][]> crops = new ArrayList<>(actualCrops);
+        for (int i = 0; i < gridSide; i++) {
+            for (int j = 0; j < gridSide; j++) {
+                int y = Math.min(Math.round(i * stepH), h - cropSize);
+                int x = Math.min(Math.round(j * stepW), w - cropSize);
+                Rect rect = new Rect(x, y, cropSize, cropSize);
+                Mat patch = new Mat(src, rect);
+                float[][][] arr = matToFloatArray(patch);
+                crops.add(new float[][][][]{arr});
+                patch.close();
+            }
+        }
+
+        if (src != image) {
+            src.close();
+        }
+        return crops;
+    }
+
+    /**
+     * Resize an image to exactly {@code width x height} (no aspect-ratio preservation).
+     *
+     * @param image  source image
+     * @param width  target width
+     * @param height target height
+     * @return resized image; caller must close
+     */
+    public static Mat resizeExact(Mat image, int width, int height) {
+        Mat result = new Mat();
+        resize(image, result, new Size(width, height));
+        return result;
+    }
+
+    /**
+     * Center-crop an image to {@code cropSize x cropSize}.
+     *
+     * @param image    source image
+     * @param cropSize target size
+     * @return cropped image; caller must close
+     */
+    public static Mat centerCrop(Mat image, int cropSize) {
+        int h = image.rows();
+        int w = image.cols();
+        int y = (h - cropSize) / 2;
+        int x = (w - cropSize) / 2;
+        Rect rect = new Rect(Math.max(x, 0), Math.max(y, 0),
+                Math.min(cropSize, w), Math.min(cropSize, h));
+        return new Mat(image, rect);
+    }
+
+    /**
+     * Normalize a single image tensor in-place.
+     *
+     * @param data float[3][H][W] in [0,1] range
+     * @param mean per-channel mean (RGB order)
+     * @param std  per-channel standard deviation (RGB order)
+     */
+    public static void normalize(float[][][] data, float[] mean, float[] std) {
+        int channels = data.length;
+        for (int c = 0; c < channels; c++) {
+            for (int h = 0; h < data[c].length; h++) {
+                for (int w = 0; w < data[c][h].length; w++) {
+                    data[c][h][w] = (data[c][h][w] - mean[c]) / std[c];
+                }
+            }
+        }
+    }
+
+    /**
+     * Flatten a list of crops into a single ONNX-ready float array.
+     * Each crop is float[1][3][cropSize][cropSize]; output is float[N*3*H*W].
+     */
+    public static float[] cropsToOnnxInput(List<float[][][][]> crops, int cropSize) {
+        int n = crops.size();
+        int total = n * 3 * cropSize * cropSize;
+        float[] result = new float[total];
+        int idx = 0;
+        for (float[][][][] crop : crops) {
+            float[][][] data = crop[0];
+            for (int c = 0; c < 3; c++) {
+                for (int h = 0; h < cropSize; h++) {
+                    for (int w = 0; w < cropSize; w++) {
+                        result[idx++] = data[c][h][w];
+                    }
+                }
+            }
+        }
+        return result;
     }
 }
 
