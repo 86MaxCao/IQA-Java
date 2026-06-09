@@ -138,7 +138,7 @@ Each model follows the same pattern:
 ### 1. Clone
 
 ```bash
-git clone https://github.com/86Cao/IQA-Java.git
+git clone https://github.com/86MaxCao/IQA-Java.git
 cd IQA-Java
 ```
 
@@ -399,7 +399,7 @@ All models are adapted from open-source implementations:
 ```bibtex
 @software{iqa_java,
   title={IQA-Java: Multi-Model Image Quality Assessment with ONNX Runtime},
-  url={https://github.com/86Cao/IQA-Java},
+  url={https://github.com/86MaxCao/IQA-Java},
   year={2024}
 }
 ```
