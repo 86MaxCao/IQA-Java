@@ -44,13 +44,8 @@ logs/
 .DS_Store
 Thumbs.db
 
-# One-time setup scripts (user-specific, should not be committed)
+# Internal docs and scripts (not for release)
+docs/
 setup_git_repo.sh
-
-# Documentation files that are no longer needed (already completed)
-GITHUB_SETUP.md
-REFACTORING_PLAN.md
-
-# Release creation scripts (user-specific, not needed in repo)
 create_release.sh
 create_release_only.sh
